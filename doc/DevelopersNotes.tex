@@ -1,0 +1,239 @@
+\documentclass[dvips, 11pt, a4paper]{article}
+\usepackage{amsmath}
+
+\addtolength{\evensidemargin}{-1.5cm}
+\addtolength{\oddsidemargin}{-1.5cm}
+\addtolength{\textwidth}{3cm}
+\addtolength{\topmargin}{-2cm}
+\addtolength{\textheight}{2cm}
+\setlength{\footskip}{3cm}
+
+\begin{document}
+
+\title{Development Notes for the C4 Code} \author{Richard Ferrier}
+\date{February 2010}
+
+\maketitle
+
+\section{Fortran2003 and Object Oriented Programming}
+\label{sec:Fortran2003AndObjectOrientedProgramming}
+
+Compared with popular OO codes such as C++ and Java, there are a
+number of idiosyncracies in Fortran 2003 that one needs to be aware
+of.
+
+In the following discussions, references will be made to the different
+kinds of class in a class hierarchy.  I will explain them here briefly. 
+Going from top to bottom, they
+are pure abstract base classes (PABCs, or simply ``interfaces''); impure
+abstract classes; and concrete classes.  A PABC has no data or
+algorithms; it is simply a set of method signatures that must be
+filled in by the classes extending it.  Signatures are called deferred
+type-bound procedures in Fortran.  They are defined using abstract
+interface blocks.
+
+An impure abstract class unifies several concrete classes by having
+their common data and methods written into it.  It may bind some of
+the signatures to concrete methods, but it may also defer them to the
+concrete classes.  There is a quirk or bug in the Intel Fortran
+compiler in this situation, by the way.  The linker can appear to
+ fail when an intermediate
+abstract class does not provide a binding for a deferred signature.  
+A re-declared signature in the intermediate AC appears to fix
+this.
+
+A class deemed abstract cannot be used as a basis for
+objects since it is incomplete in its implementation.  Concrete
+classes, having filled in all remaining signatures, can.  They are not
+necessarily the last word in the hierarchy and can be extended just
+like abstract classes, optionally having their existing bindings
+overridden by new concrete methods.  This is considered 
+bad OO practice except in certain cases, such as overriding factory
+methods to create fake components when testing.  More on this later.
+
+
+\subsection{Single Inheritance and Interface Realisation}
+\label{sec:SingleInheritanceAndInterfaceRealisation}
+
+Fortran 2003 and C++ use the ``extends'' keyword to achieve both
+inheritance (extension of concrete and impure abstract classes) and
+interface realisation (extension of pure abstract base classes).  In
+Fortran, only one supertype can be extended by each class.  C++ on the
+other hand allows multiple inheritance and interface realisation.
+Multiple inheritance is controversial and we do not consider its
+absence in Fortran a particular hindrance.  But realisation of
+multiple interfaces is safe and useful, because it allows data types
+to be polymorphic in more than one respect.  The inability to realise
+more than one interface has not proved to be a fatal limitation yet.
+
+\subsection{No Templates}
+\label{sec:NoTemplatesGenerics}
+
+We get round the lack of templates using a preprocessor.
+
+% tk
+
+\subsection{Private Module Entities, Not Private Class Entities}
+\label{sec:PrivateModuleEntitiesNotPrivateClassEntities}
+
+
+
+
+\section{Code Structure}
+\label{sec:CodeStructure}
+
+\subsection{Interface vs. Implementation}
+\label{sec:InterfaceVsImplementation}
+
+It is common practice to separate interface and
+implementation.  The implementation classes, containing data and
+algorithms, can then be decoupled from one another and simply
+reference the interface.  This leads to code that is more flexible and
+modular.
+
+In the code we have subscribed partially but not completely to this
+practice.  To have everything implement an interface would require a
+lot of run-time overhead owing to polymorphism everywhere - that is,
+unless the compiler is sophisticated enough to resolve unnecessary
+dynamic bindings into static ones.  Given the imperfections in the
+Intel Fortran compiler at the time of writing, I would not count on it.
+
+We are interested in polymorphism only when we have data types that
+truly need to be interchangeable at run time, or that need to
+back-point to types defined earlier in the use-chain without causing a
+circular reference.  Otherwise, I prefer to err on the side of procedural
+programming in order to keep the code computationally efficient.
+
+So rather than an ``interface'' layer and an ``implementation'' layer
+of modules, there is a ``static'' layer and an ``dynamic'' layer.  The
+static layer contains a mixture of non-polymorphic types and impure
+abstract classes.  All clients, from programs to concrete classes, will
+look to this layer when they need to use or collaborate with a class.
+
+The dynamic layer contains concrete extensions to the abstract classes.
+
+
+\section{Programming}
+\label{sec:Programming}
+
+
+\subsection{Object Creation}
+\label{sec:ObjectCreation}
+
+In programs and subprograms, when an object needs to be created, we
+have the choice between statically declaring the concrete class using
+the ``type'' keyword and allowing for dynamic allocation using
+``class''.  The latter is almost always preferred since it allows for
+polymorphism.
+
+Even when the top-level client knows exactly which concrete class it
+wants to use, it is often the case that the object goes on to form
+part of another higher-level object via Dependency Injection.  DI is
+explained below.  And in tests, which take place from the point of
+view of an intermediate client, we want to test those methods that are
+generally visible to other classes, not auxiliary concrete-specific
+methods.  So it makes sense to declare the abstract class.
+
+We will define object creation as dynamic allocation followed by
+initialisation.  Dependency injection is concerned with the allocation
+step.  For the initialisation, since we are dealing with an abstraction,
+we will need to use Fortran's ``select type'' construct.
+
+\subsubsection{Initialisation}
+
+Initialisation is one of the few scenarios when I will use this construct.  This construct should be used with caution
+because it penetrates through the abstract interface of an object,
+exposing its concrete organs.  Essentially it creates a binding
+between the caller and the concrete class.  This is bad programming,
+ unless the caller exists in the same module.
+
+In initialisation the construct is necessary because the abstract class has
+been declared, but we need to temporarily access the concrete components.
+Could we get around it by declaring an abstract initialisation signature 
+that passes in a common set of arguments?  Not generally.  As concrete
+ classes vary, so will their components.  The combination of
+ initialising arguments required will often differ from class to class.
+
+Note that the initialisation call is always received by the concrete class,
+at the bottom of the class hierarchy.  The method name ``init'' is
+ reserved for this purpose.  But if the concrete class has a superclass
+ whose data also needs initialising, it must pass on arguments in a
+ nested call.  How then to name the superclass' initialisation method?  
+To overload init(...) confuses the compiler.  I have chosen to call it
+ simply initXYZ, where XYZ is the name of the superclass.  In order to be 
+systematic, the chain of calls will never skip a data-less class; that 
+class will simply pass on the call.
+
+\subsubsection{Factory classes}
+
+These are useful but not essential.  Once a concrete class has been designed
+and coded up, it may be employed any number of times by client classes and
+test programs.  The code needed to do the allocation and initialisation 
+is not lengthy, but it becomes repetetive.  I will often factor it into a 
+``create'' method, together with a corresponding ``destroy'' method, 
+bound to a factory class.  Usually the factory class will be in the same module as the concrete class.
+
+Creating a whole new class to create a corresponding concrete class almost seems like overkill.  One might argue that it would be more elegant to add
+the create and destroy procedures to Fortran 90-style interface blocks.
+But sometimes different concrete classes will have the same creation 
+signature, and the compiler cannot be relied upon to make the distinction.
+So we make the client choose a factory object in order to
+select a particular concrete class.
+
+Factory classes should not be confused with the GoF Factory Method pattern. 
+This pattern essentially makes the creation method abstract in order to
+ support polymorphic object creation.  It is useful when some class A
+is responsible for the creation of another class B, but the concrete type
+ of B depends on the concrete type of A, so that we have A1 creating B1,
+A2 creating B2, etc.  As far as I can tell it is only applicable when the 
+set of initialisation arguments does not change.  I tend not
+to use the FM pattern, as we can get better decoupling with Dependency 
+Injection anyway.
+
+[EDIT: Actually we could have ``create'' procedures without the factory 
+objects, if we append the target concrete class name to ``create''.]
+
+\subsubsection{Dependency Injection}
+
+This is a mechanism that promotes modularity and
+reduces coupling.  If some class A contains a polymorphic component B,
+it should not bind itself to a particular implementation of B, but
+instead contain a placeholder to B's interface.  The client is then
+free to compose A using any combination of components it wants.  To do
+this, the client dynamically allocates and initialises B before
+passing it to A.  Class A can use Fortran's ``move_alloc'' intrinsic
+procedure to transfer the allocation to its placeholder.
+
+An alternative creational design pattern is the GoF Abstract Factory
+pattern.  This pattern is useful when a class contains several
+components related by a theme.  In our code the classes usually
+contain one or two polymorphic components at a time and the AF pattern
+would be overkill.  Dependency Injection is a simpler and more
+intuitive way of achieving low coupling between modules.
+
+
+\subsubsection{Initialisation of an Abstract Superclass}
+\label{sec:InterfaceVsImplementation}
+
+
+\section{Testing}
+\label{sec:Testing}
+
+\subsection{(Dirty Unit Tests}
+\label{sec:DirtyUnitTests}
+
+
+
+
+\begin{thebibliography}{}
+\bibitem{Murthy09} Murthy JY, Minkowycz WJ, Sparrow EM, Mathur
+  SR. Survey of Numerical Methods, in: \textsl{Handbook of Numerical
+    Heat Transfer}, 2nd Ed.  John Wiley \& Sons, Inc., Hoboken, 2009.
+\bibitem{Luo10a} Luo XL, Lei KB, Gu ZL, Wang S, Kase K.  A novel
+  {C}artesian cut cell solver for incompressible viscous flow in
+  irregular domains.  \textsl{Int. J. Numer. Meth. Fluids} [In press].
+\bibitem{Ferziger96} Ferziger JH, Peri{\'c} M. \textsl{Computational
+    Methods for Fluid Dynamics}.  Springer, Berlin, 1996.
+\end{thebibliography}
+
+\end{document}

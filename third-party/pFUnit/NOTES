@@ -1,0 +1,152 @@
+makefile include could be customized to capture build settings.  E.g. compiler would
+always have to agree anyway.
+
+
+
+	Use New/Clean for fixtures used in TestCase
+
+
+	Adding New/Clean methods for fixtures to TestCase
+	
+	If multiple methods, and the first setup fails, what about later setups; abort the entire loop?
+	   mark non run methods as "aborted"
+        Need to handle exceptions during teardown
+
+
+
+	Parallelization
+	   - Use MPI_Comm_spawn() to launch np processes which actuall perform setup-test-teardown
+             . cannot use opaque addresses for objects - object will not be allocated on spawned
+               processes.  Could use "new/clean" to create/destroy fixtures.
+             . function pointers should work
+	     . process
+	       - parent sends Setup() to child
+ 	       - children run Setup()
+	       - parent checks for failure in setup
+	         - not
+               - parent sends
+
+	   - Run() accepts optional argument to specify number of processes to launch
+	     Executes test on all n processes, and checks for an exception on _any_
+	     Reports the list of processors on which the test failed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+x	create empty internal file
+x	append line to internal file
+x	get size of internal file
+x	create internal file from external file
+	write  external file from internal file
+	get number of lines in internal file
+
+	rewind internal file
+	get next line from internal file
+	detect eof
+	
+
+	Detect presence of setup in module
+	Detect presence of teardown in module
+	Detect test methods in module
+
+
+
+
+
+
+
+
+
+
+
+X	Release memory from test case
+X	Release memory from test suite
+	Include suite name in summary for running suite
+X	failed tests report full test name including suite heritage
+	don't include unnamed suites in full test name
+	Test result shows test hierarchy
+	Make message optional for failed test.
+X	Add optional setup/teardown for suite()
+	Acquire protex and use for documentation.
+        Introduce ParamaterizedTestCase
+	    - test param single
+	    - test param multi
+        Add Clean() method for TestResult()
+
+
+
+
+
+
+
+
+X	Invoke test generic pointer
+X	Invoke test method
+X	Invoke setUp first
+X	Invoke tearDown afterward
+X	Invoke tearDown even if the test method fails
+X	Invoke multiple tests
+X?	Report collected results
+X	Log string in WasRun
+X	Report failed tests
+X	Catch and report setUp errors
+X	Move GenericPointer tests into a test.
+X	Eliminate named instances of t_WasRun in m_TestCaseTest
+        Make components private where possible.
+X	Allow TestSuite to include other TestSuite
+X       Pass test name to assert.
+X	Fix memory leak in testsuite  (use NEW and DELETE)
+X	Pass string to throw exception
+X	Check for any unresolved exceptions
+X	Allow multiple tests in test case
+X	Move testTestSuite to separate file/module
+	Parallel exceptions/assert
+X	Report multiple failures within a test case.
+	Add CLEAN() method to TestCase class.
+X	Add test case for setup failure.
+
+	Use Macro to automate NEW, DELETE, and test detection
+	   - Extend derived type with self-reference component
+             . detect derived type name and end statement
+	   - Create New(self) which allocates derived type
+             and places self reference
+	   - Create Delete(self) which deallocates self-reference
+ 	   - Create TestCase() which returns TestCase from
+	     all methods called "test*"
+	     . detect all "soubroutine test*()"
+
+
+
+
+
+Notes
+
+   To fake OO in F90 I have cheated in several ways:
+   a) Use of a 2 "C" routines to extract addresses for procedures and to invoke said procedures.
+   b) Reuse of the C routine above to extract a "generic pointer" (read address) for objects
+      masquerading as TestCase
+   c) Used an implicit interface for the TestCase constructor so that arbitrary objects
+      can be passed.
+   None of these tricks is portable, though minor changes should be able to preserve the
+   appropriate behaviour among known F90 compilers.   
+
+   Recently I have eliminated most need for "C" by exploiting interoperability provided by the 
+   F2003 standard.   This subset of the standard is now implemented by most Fortran vendors.  Those
+   using older compiles will need to resort to older pFUnit implementations.
+
+      
